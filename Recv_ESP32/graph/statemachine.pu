@@ -1,0 +1,8 @@
+@startuml
+state Idle {
+    S : entry\input action
+
+}
+[*] --> Idle : MCU Reset
+Idle --> Run : Event
+@enduml
