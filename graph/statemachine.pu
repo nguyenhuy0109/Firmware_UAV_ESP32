@@ -1,8 +1,10 @@
 @startuml
-state Idle {
-    S : entry\input action
-
+state IDLE {
+    Entry : 
+    Do : 
 }
-[*] --> Idle : MCU Reset
-Idle --> Run : Event
+[*] --> IDLE : MCU Reset
+IDLE --> RUN : event
+IDLE --> ERROR : error_trigger
+RUN --> ERROR : error_trigger
 @enduml
