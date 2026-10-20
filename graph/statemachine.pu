@@ -1,22 +1,27 @@
 @startuml State_Machine_Graph
 state IDLE {
     [*] --> CHECK_IMU
+    CHECK_IMU : CheckImu_Do();
 }
 state RUN {
-    [*] --> IDLE_ARM
+    [*] --> HOLD
     
-    IDLE_ARM --> TAKEOFF
-
-    TAKEOFF --> MANUAL
-    TAKEOFF --> ALT
+    HOLD --> TAKEOFF
     TAKEOFF --> HOLD
-
-    MANUAL --> ALT
-    MANUAL --> HOLD
-    ALT --> MANUAL
-    ALT --> HOLD
-    HOLD --> ALT
+    
     HOLD --> MANUAL
+    MANUAL --> HOLD
+
+    HOLD --> ALT
+    ALT --> HOLD
+
+    HOLD --> MISSION
+    MISSION --> HOLD
+
+    HOLD --> ACRO
+    ACRO --> HOLD
+
+    HOLD --> FOLLOW_TARGET
 }
 
 state STOP {
