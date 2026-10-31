@@ -1,10 +1,53 @@
-@startuml
+@startuml State_Machine_Graph
 state IDLE {
-    Entry : 
-    Do : 
+    [*] --> CHECK_IMU
+    CHECK_IMU : CheckImu_Do();
 }
+state RUN {
+    [*] --> HOLD
+    
+    HOLD --> TAKEOFF
+    TAKEOFF --> HOLD
+    
+    HOLD --> MANUAL
+    MANUAL --> HOLD
+
+    HOLD --> ALT
+    ALT --> HOLD
+
+    HOLD --> MISSION
+    MISSION --> HOLD
+
+    HOLD --> ACRO
+    ACRO --> HOLD
+
+    HOLD --> FOLLOW_TARGET
+}
+
+state STOP {
+    [*] --> IDLE_STOP
+
+    IDLE_STOP --> AUTO_LAND : auto_land == 1
+    IDLE_STOP --> HOME_LAND : home_land == 1
+}
+
+state ERROR {
+    [*] --> IDLE_ERROR
+
+    IDLE_ERROR --> LAND_FORCE
+    IDLE_ERROR --> EMERGENCY
+}
+
 [*] --> IDLE : MCU Reset
 IDLE --> RUN : event
 IDLE --> ERROR : error_trigger
+
+
 RUN --> ERROR : error_trigger
+RUN --> STOP 
+
+STOP --> IDLE
+STOP --> ERROR
+
+ERROR --> IDLE
 @enduml
