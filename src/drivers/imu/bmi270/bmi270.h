@@ -3,7 +3,6 @@
 
 // Define paramater
 
-#define CHIP_ID 0x24;
-#define READ_REG 0x00;
+#define CHIP_ID 0x00
 
 #endif
