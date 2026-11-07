@@ -24,6 +24,7 @@ PMW3901::PMW3901(uint8_t csPin)
     }
 
 //=====CHECK KHỞI TẠO SPI=====//
+
 bool PMW3901::init_SPI_PMW3901() {
     // Chọn bộ điều khiển SPI
     spi_host_device_t host = SPI2_HOST;
@@ -39,7 +40,7 @@ bool PMW3901::init_SPI_PMW3901() {
     bus_cfg.data5_io_num = -1;
     bus_cfg.data6_io_num = -1;
     bus_cfg.data7_io_num = -1;
-    bus_cfg.max_transfer_sz = 256;          // tối đa 256 bytes buffer
+    bus_cfg.max_transfer_sz = 256;                              // tối đa 256 bytes buffer
 
     // Khởi tạo bus
     esp_err_t err_spi_bus_init = spi_bus_initialize(host, &bus_cfg, SPI_DMA_CH_AUTO);
@@ -51,15 +52,15 @@ bool PMW3901::init_SPI_PMW3901() {
     // Cấu hình cho thiết bị thêm vào bus
     spi_device_interface_config_t dev_cfg = {};
         dev_cfg.clock_speed_hz = 100000;
-        dev_cfg.mode = 3;                   // mode SPI, phụ thuộc vào IC
-        dev_cfg.spics_io_num = m_csPin;     // chọn chân
-        dev_cfg.queue_size = 1;             // hàng đợi của thiết bị có sức chứa 1
+        dev_cfg.mode = 3;                                       // mode SPI, phụ thuộc vào IC
+        dev_cfg.spics_io_num = m_csPin;                         // chọn chân
+        dev_cfg.queue_size = 1;                                 // hàng đợi của thiết bị có sức chứa 1
 
     // Đăng ký thiết bị
     esp_err_t err_device = spi_bus_add_device(SPI2_HOST, &dev_cfg, &m_dev);
 
     if(err_device != ESP_OK) {
-        spi_bus_free(host);                 // Giải phóng bus
+        spi_bus_free(host);                                     // Giải phóng bus
         return false;
     }
 
@@ -67,6 +68,7 @@ bool PMW3901::init_SPI_PMW3901() {
 }
 
 //====HÀM GHI VÀO THANH GHI=====//
+
 esp_err_t PMW3901::registerWrite(uint8_t reg, uint8_t value)
 {
     if (m_dev == nullptr) {
@@ -76,7 +78,7 @@ esp_err_t PMW3901::registerWrite(uint8_t reg, uint8_t value)
     // Lấy quyền sử dụng bus trước khi kéo CS xuống và truyền.
     esp_err_t err = spi_device_acquire_bus(m_dev, portMAX_DELAY);
     if (err != ESP_OK) {
-        return err;                         // Chưa giữ được bus nên không cần release.
+        return err;                                             // Chưa giữ được bus nên không cần release.
     }
 
     spi_transaction_t transaction = {};
@@ -105,7 +107,120 @@ esp_err_t PMW3901::registerWrite(uint8_t reg, uint8_t value)
     gpio_set_level(cs, 1);
     esp_rom_delay_us(200);
 
-    spi_device_release_bus(m_dev);
+    spi_device_release_bus(m_dev);                              // trả bus
 
     return err;
+}
+
+//=====KHỞI TẠO THANH GHI TỐI ƯU=====//
+
+esp_err_t PMW3901::initRegister() {
+    // Mỗi hàng gồm: {địa chỉ thanh ghi, giá trị cần ghi}.
+    const uint8_t config[][2] = {
+        {0x7F, 0x00},
+        {0x61, 0xAD},
+        {0x7F, 0x03},
+        {0x40, 0x00},
+        {0x7F, 0x05},
+        {0x41, 0xB3},
+        {0x43, 0xF1},
+        {0x45, 0x14},
+        {0x5B, 0x32},
+        {0x5F, 0x34},
+        {0x7B, 0x08},
+        {0x7F, 0x06},
+        {0x44, 0x1B},
+        {0x40, 0xBF},
+        {0x4E, 0x3F},
+    };
+                                        
+    for (const auto& entry : config) {                          // lần lượt lấy từng hàng trong config, gọi hàng đang xét là entry
+                                                                //  entry là 1 hàng trong bảng
+                                                                // entry[0] là phần tử đầu tiên của hàng
+        esp_err_t err_init_reg = registerWrite(entry[0], entry[1]);
+
+        if (err != ESP_OK) {
+            return err_init_reg;
+        }
+    }
+
+    return ESP_OK;
+}
+
+//=====HÀM ĐỌC THANH GHI=====//
+
+esp_err_t PMW3901::registerRead(uint8_t reg, uint8_t *value) {
+    // Kiểm tra nơi nhận dữ liệu và handle thiết bị.
+    if (value == nullptr) {
+        return ESP_ERR_INVALID_ARG;                             // tham số truyền vào kh hợp lệ
+    }
+
+    if (m_dev == nullptr) {
+        return ESP_ERR_INVALID_STATE;                           // trạng thái hiện tại chưa thoả mãn
+    }
+
+    // Giữ bus trong toàn bộ thao tác đọc.
+    esp_err_t err = spi_device_acquire_bus(m_dev, portMAX_DELAY);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    const gpio_num_t cs = static_cast<gpio_num_t>(m_csPin);
+
+    err = gpio_set_level(cs, 0);
+    if (err != ESP_OK) {
+        spi_device_release_bus(m_dev);
+        return err;
+    }
+
+    esp_rom_delay_us(50);                                       // delay
+
+    // Gửi địa chỉ: xóa bit 7 để yêu cầu đọc.
+    spi_transaction_t address_transaction = {};
+    address_transaction.flags = SPI_TRANS_USE_TXDATA;
+    address_transaction.length = 8;
+    address_transaction.tx_data[0] = reg & 0x7F;
+
+    err = spi_device_polling_transmit(m_dev, &address_transaction);
+
+    uint8_t received = 0;
+
+    if (err == ESP_OK) {
+        // Chờ cảm biến chuẩn bị dữ liệu.
+        esp_rom_delay_us(500);
+
+        // Gửi byte giả để tạo 8 xung clock, đồng thời nhận dữ liệu.
+        spi_transaction_t data_transaction = {};
+        data_transaction.flags =
+            SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA;
+        data_transaction.length = 8;
+        data_transaction.rxlength = 8;
+        data_transaction.tx_data[0] = 0x00;
+                                                                // truyền đồng bộ, kiểm tra lỗi transmit                                                      
+        err = spi_device_polling_transmit(m_dev, &data_transaction);
+
+        if (err == ESP_OK) {
+            received = data_transaction.rx_data[0];
+        }
+    }
+
+    // Kết thúc giao tiếp kể cả khi truyền/nhận thất bại.
+    esp_rom_delay_us(50);
+    esp_err_t cs_err = gpio_set_level(cs, 1);                   // kiểm tra lỗi gpio
+    esp_rom_delay_us(200);
+
+    spi_device_release_bus(m_dev);                              // giải phóng bus
+
+    // Giữ lỗi truyền/nhận nếu đã có.
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (cs_err != ESP_OK) {
+        return cs_err;
+    }
+
+    // Chỉ cập nhật biến của người gọi khi toàn bộ thao tác thành công.
+    *value = received;                                          // ghi giá trị
+    return ESP_OK;
 }
