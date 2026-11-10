@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include "orb_topic.hpp"
 
 enum class Mode : uint8_t
 {

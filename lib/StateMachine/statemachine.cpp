@@ -7,12 +7,27 @@ static void CheckImu_Do(StateMachine& sm)
 
 static void Hold_Entry(StateMachine&)
 {
+    ControlFlagsMsg flags
+    {
+        .armed = true,
+        .enable_rate = true,
+        .enable_attitude = true,
+        .enable_altitude = true,
+        .enable_position = true,
+        .auto_mode = AutoSubMode::HOLD
+    };
 
+    g_control_flags_topic.publish(flags);
 }
 
 static void Hold_Do(StateMachine&)
 {
 
+}
+
+static void Takeoff_Entry(StateMachine& sm)
+{
+    
 }
 
 static void Takeoff_Do(StateMachine&)
@@ -88,7 +103,7 @@ static constexpr Flight_State_t kStates[] =
 {   //  ||          State             ||      Mode Parent     ||      Entry Function      ||      Do Function     ||      Exit Function       ||
     {           State::CHECK_IMU        ,       Mode::IDLE      ,           nullptr         ,       CheckImu_Do     ,           nullptr         },
     {           State::HOLD             ,       Mode::RUN       ,           nullptr         ,       nullptr         ,           nullptr         },
-    {           State::TAKEOFF          ,       Mode::RUN       ,           nullptr         ,       nullptr         ,           nullptr         },
+    {           State::TAKEOFF          ,       Mode::RUN       ,        Takeoff_Entry      ,       nullptr         ,           nullptr         },
     {           State::MANUAL           ,       Mode::RUN       ,           nullptr         ,       nullptr         ,           nullptr         },
     {           State::ALTITUDE         ,       Mode::RUN       ,           nullptr         ,       nullptr         ,           nullptr         },
     {           State::MISSION          ,       Mode::RUN       ,           nullptr         ,       nullptr         ,           nullptr         },
