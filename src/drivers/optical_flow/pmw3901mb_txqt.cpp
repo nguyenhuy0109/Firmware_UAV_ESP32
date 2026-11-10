@@ -10,6 +10,7 @@
 
 #define PRODUCT_ID 0x49
 #define REVISION_ID 0X00
+#define INVERSE_PRODUCT_ID 0xB6
 
 // Đặt chân theo board (chưa có board)
 namespace pin {
@@ -18,10 +19,27 @@ namespace pin {
     constexpr int SCLK_PIN = 3;
 }
 
-// Lưu số chân chọn cảm biến
+//=====LƯU SỐ CHÂN CHỌN CẢM BIẾN=====//
+
 PMW3901::PMW3901(uint8_t csPin)
     : m_csPin(csPin) {
     }
+
+//=====SET CHÂN GPIO=====//
+
+esp_err_t PMW3901::init_CS_GPIO() {
+    gpio_config_t cfg = {};
+        cfg.pin_bit_mask = 1ULL << m_csPin;
+        cfg.mode = GPIO_MODE_OUTPUT;
+        cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+        cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        cfg.intr_type = GPIO_INTR_DISABLE;    
+    esp_err_t err = gpio_config(&cfg);
+    if (err != ESP_OK)
+        return err;
+    // CS idle HIGH
+    return gpio_set_level(static_cast<gpio_num_t>(m_csPin), 1);
+}
 
 //=====CHECK KHỞI TẠO SPI=====//
 
@@ -53,7 +71,7 @@ bool PMW3901::init_SPI_PMW3901() {
     spi_device_interface_config_t dev_cfg = {};
         dev_cfg.clock_speed_hz = 100000;
         dev_cfg.mode = 3;                                       // mode SPI, phụ thuộc vào IC
-        dev_cfg.spics_io_num = m_csPin;                         // chọn chân
+        dev_cfg.spics_io_num = -1;                              // chọn chân
         dev_cfg.queue_size = 1;                                 // hàng đợi của thiết bị có sức chứa 1
 
     // Đăng ký thiết bị
@@ -139,7 +157,7 @@ esp_err_t PMW3901::initRegister() {
                                                                 // entry[0] là phần tử đầu tiên của hàng
         esp_err_t err_init_reg = registerWrite(entry[0], entry[1]);
 
-        if (err != ESP_OK) {
+        if (err_init_reg != ESP_OK) {
             return err_init_reg;
         }
     }
@@ -222,5 +240,67 @@ esp_err_t PMW3901::registerRead(uint8_t reg, uint8_t *value) {
 
     // Chỉ cập nhật biến của người gọi khi toàn bộ thao tác thành công.
     *value = received;                                          // ghi giá trị
+    return ESP_OK;
+}
+
+//=====CHECK KHỞI TẠO=====//
+
+bool PMW3901::begin() {
+    vTaskDelay(pdMS_TO_TICKS(40));
+    if(!PMW3901::init_SPI_PMW3901())                            // check khởi tạo spi bus + device
+        return false;
+    if(init_CS_GPIO() != ESP_OK)                                  // check khởi tạo GPIO thủ công
+        return false;
+    gpio_set_level(static_cast<gpio_num_t>(m_csPin), 0);        // reset giao tiếp, kéo CS xuống, chờ 50us
+    esp_rom_delay_us(50);
+    gpio_set_level(static_cast<gpio_num_t>(m_csPin), 1);        // reset giao tiếp, kéo CS lên, chờ 50us
+    esp_rom_delay_us(50);
+    if(registerWrite(0x3A, 0x5A) != ESP_OK)                     // ghi 0x5A vào Power_Up_Reset
+        return false;
+    vTaskDelay(pdMS_TO_TICKS(5));                               // chờ IC reset, mili second
+
+    uint8_t product_id = 0;
+    if(registerRead(0x00, &product_id) != ESP_OK)               // check product id
+        return false;
+    if(product_id != PRODUCT_ID) 
+        return false;
+    
+    uint8_t inverse_id = 0;
+    if(registerRead(0x5F, &inverse_id) != ESP_OK)                  // check inverse product id (address: 0x5F)  
+        return false;
+    if(inverse_id != INVERSE_PRODUCT_ID)
+        return false;
+    
+    uint8_t dummy = 0;                                          // read dummy bytes
+    registerRead(0x02, &dummy);                                 // Motion
+    registerRead(0x03, &dummy);                                 // Delta_X_L
+    registerRead(0x04, &dummy);                                 // Delta_X_H
+    registerRead(0x05, &dummy);                                 // Delta_Y_L
+    registerRead(0x06, &dummy);                                 // Delta_Y_H
+
+    if(initRegister() != ESP_OK)                                // check init performance optimization reg
+        return false;
+    return true;
+}
+
+//=====ĐỌC CHUYỂN ĐỘNG=====//
+
+esp_err_t PMW3901::readMotionCount(int16_t *deltaX, int16_t *deltaY) {
+    if (!deltaX || !deltaY)                                     // check lỗi dữ liệu gửi về
+        return ESP_ERR_INVALID_ARG;                             
+    uint8_t motion = 0;
+    esp_err_t err = registerRead(0x02, &motion);                // check lỗi đọc dữ liệu
+    if (err != ESP_OK)
+        return err;
+    uint8_t dummy = 0;
+    registerRead(0x02, &dummy);                                 // read Motion (address: 0x02)
+    uint8_t xl = 0, xh = 0, yl = 0, yh = 0;
+    registerRead(0x03, &xl);    // Delta_X_L
+    registerRead(0x04, &xh);    // Delta_X_H
+    registerRead(0x05, &yl);    // Delta_Y_L
+    registerRead(0x06, &yh);    // Delta_Y_H
+    *deltaX = static_cast<int16_t>((static_cast<uint16_t>(xh) << 8) | xl);
+    *deltaY = static_cast<int16_t>((static_cast<uint16_t>(yh) << 8) | yl);
+
     return ESP_OK;
 }
