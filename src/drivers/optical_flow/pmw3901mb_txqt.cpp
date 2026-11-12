@@ -2,15 +2,20 @@
 
 #include "pmw3901mb_txqt.hpp"
 
-#include <driver/spi_master.h>
+#include "driver/spi_master.h"
 #include "esp_err.h"
 #include "driver/gpio.h"
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 
-#define PRODUCT_ID 0x49
-#define REVISION_ID 0X00
-#define INVERSE_PRODUCT_ID 0xB6
+namespace pmw3901_val {
+    constexpr uint8_t PRODUCT_ID         = 0x49;
+    constexpr uint8_t INVERSE_PRODUCT_ID = 0xB6;
+}
+
+// #define PRODUCT_ID 0x49
+// #define REVISION_ID 0X00
+// #define INVERSE_PRODUCT_ID 0xB6
 
 // Đặt chân theo board (chưa có board)
 namespace pin {
@@ -29,11 +34,11 @@ PMW3901::PMW3901(uint8_t csPin)
 
 esp_err_t PMW3901::init_CS_GPIO() {
     gpio_config_t cfg = {};
-        cfg.pin_bit_mask = 1ULL << m_csPin;
-        cfg.mode = GPIO_MODE_OUTPUT;
-        cfg.pull_up_en = GPIO_PULLUP_DISABLE;
-        cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        cfg.intr_type = GPIO_INTR_DISABLE;    
+        cfg.pin_bit_mask    = 1ULL << m_csPin;
+        cfg.mode            = GPIO_MODE_OUTPUT;
+        cfg.pull_up_en      = GPIO_PULLUP_DISABLE;
+        cfg.pull_down_en    = GPIO_PULLDOWN_DISABLE;
+        cfg.intr_type       = GPIO_INTR_DISABLE;    
     esp_err_t err = gpio_config(&cfg);
     if (err != ESP_OK)
         return err;
@@ -49,15 +54,15 @@ bool PMW3901::init_SPI_PMW3901() {
 
     // Cấu hình dây
     spi_bus_config_t bus_cfg = {};
-    bus_cfg.mosi_io_num = pin::MOSI_PIN;
-    bus_cfg.miso_io_num = pin::MISO_PIN;
-    bus_cfg.sclk_io_num = pin::SCLK_PIN;
-    bus_cfg.quadwp_io_num = -1;
-    bus_cfg.quadhd_io_num = -1;
-    bus_cfg.data4_io_num = -1;
-    bus_cfg.data5_io_num = -1;
-    bus_cfg.data6_io_num = -1;
-    bus_cfg.data7_io_num = -1;
+    bus_cfg.mosi_io_num     = pin::MOSI_PIN;
+    bus_cfg.miso_io_num     = pin::MISO_PIN;
+    bus_cfg.sclk_io_num     = pin::SCLK_PIN;
+    bus_cfg.quadwp_io_num   = -1;
+    bus_cfg.quadhd_io_num   = -1;
+    bus_cfg.data4_io_num    = -1;
+    bus_cfg.data5_io_num    = -1;
+    bus_cfg.data6_io_num    = -1;
+    bus_cfg.data7_io_num    = -1;
     bus_cfg.max_transfer_sz = 256;                              // tối đa 256 bytes buffer
 
     // Khởi tạo bus
@@ -69,10 +74,10 @@ bool PMW3901::init_SPI_PMW3901() {
     
     // Cấu hình cho thiết bị thêm vào bus
     spi_device_interface_config_t dev_cfg = {};
-        dev_cfg.clock_speed_hz = 100000;
-        dev_cfg.mode = 3;                                       // mode SPI, phụ thuộc vào IC
-        dev_cfg.spics_io_num = -1;                              // chọn chân
-        dev_cfg.queue_size = 1;                                 // hàng đợi của thiết bị có sức chứa 1
+        dev_cfg.clock_speed_hz  = 100000;
+        dev_cfg.mode            = 3;                             // mode SPI, phụ thuộc vào IC
+        dev_cfg.spics_io_num    = -1;                            // chọn chân
+        dev_cfg.queue_size      = 1;                             // hàng đợi của thiết bị có sức chứa 1
 
     // Đăng ký thiết bị
     esp_err_t err_device = spi_bus_add_device(SPI2_HOST, &dev_cfg, &m_dev);
@@ -195,9 +200,9 @@ esp_err_t PMW3901::registerRead(uint8_t reg, uint8_t *value) {
 
     // Gửi địa chỉ: xóa bit 7 để yêu cầu đọc.
     spi_transaction_t address_transaction = {};
-    address_transaction.flags = SPI_TRANS_USE_TXDATA;
-    address_transaction.length = 8;
-    address_transaction.tx_data[0] = reg & 0x7F;
+    address_transaction.flags        = SPI_TRANS_USE_TXDATA;
+    address_transaction.length       = 8;
+    address_transaction.tx_data[0]   = reg & 0x7F;
 
     err = spi_device_polling_transmit(m_dev, &address_transaction);
 
@@ -209,11 +214,10 @@ esp_err_t PMW3901::registerRead(uint8_t reg, uint8_t *value) {
 
         // Gửi byte giả để tạo 8 xung clock, đồng thời nhận dữ liệu.
         spi_transaction_t data_transaction = {};
-        data_transaction.flags =
-            SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA;
-        data_transaction.length = 8;
-        data_transaction.rxlength = 8;
-        data_transaction.tx_data[0] = 0x00;
+        data_transaction.flags          = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA;
+        data_transaction.length         = 8;
+        data_transaction.rxlength       = 8;
+        data_transaction.tx_data[0]     = 0x00;
                                                                 // truyền đồng bộ, kiểm tra lỗi transmit                                                      
         err = spi_device_polling_transmit(m_dev, &data_transaction);
 
@@ -246,10 +250,10 @@ esp_err_t PMW3901::registerRead(uint8_t reg, uint8_t *value) {
 //=====CHECK KHỞI TẠO=====//
 
 bool PMW3901::begin() {
-    vTaskDelay(pdMS_TO_TICKS(40));
+    vTaskDelay(pdMS_TO_TICKS(40));                              // chờ trên 1ms thì dùng vTaskDelay()
     if(!PMW3901::init_SPI_PMW3901())                            // check khởi tạo spi bus + device
         return false;
-    if(init_CS_GPIO() != ESP_OK)                                  // check khởi tạo GPIO thủ công
+    if(init_CS_GPIO() != ESP_OK)                                // check khởi tạo GPIO thủ công
         return false;
     gpio_set_level(static_cast<gpio_num_t>(m_csPin), 0);        // reset giao tiếp, kéo CS xuống, chờ 50us
     esp_rom_delay_us(50);
@@ -262,13 +266,13 @@ bool PMW3901::begin() {
     uint8_t product_id = 0;
     if(registerRead(0x00, &product_id) != ESP_OK)               // check product id
         return false;
-    if(product_id != PRODUCT_ID) 
+    if(product_id != pmw3901_val::PRODUCT_ID) 
         return false;
     
     uint8_t inverse_id = 0;
-    if(registerRead(0x5F, &inverse_id) != ESP_OK)                  // check inverse product id (address: 0x5F)  
+    if(registerRead(0x5F, &inverse_id) != ESP_OK)               // check inverse product id (address: 0x5F)  
         return false;
-    if(inverse_id != INVERSE_PRODUCT_ID)
+    if(inverse_id != pmw3901_val::INVERSE_PRODUCT_ID)
         return false;
     
     uint8_t dummy = 0;                                          // read dummy bytes
